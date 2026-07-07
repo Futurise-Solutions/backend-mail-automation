@@ -209,14 +209,16 @@ exports.getLeads = async (req, res) => {
     if (role) query.role = role;
     if (industry) query.industry = industry;
     if (status) query.status = status;
-    if (reply !== undefined) query.replyReceived = reply === 'true';
-    if (followupCount !== undefined) query.followupCount = Number(followupCount);
+    if (reply !== undefined && reply !== '') query.replyReceived = reply === 'true';
+    if (followupCount !== undefined && followupCount !== '') query.followupCount = Number(followupCount);
 
     // C. Specialized filters
     if (duplicate === 'true') {
       query.status = 'DUPLICATE';
     } else if (duplicate === 'false') {
-      query.status = { $ne: 'DUPLICATE' };
+      if (!query.status) {
+        query.status = { $ne: 'DUPLICATE' };
+      }
     }
     if (fresh === 'true') query.status = 'FRESH';
     if (skipped === 'true') query.status = 'SKIPPED';
@@ -338,6 +340,7 @@ exports.deleteLead = async (req, res) => {
  */
 exports.triggerBatchSend = async (req, res) => {
   const count = Number(req.body.count) || 10;
+  const ids = req.body.ids;
 
   // Establish Server-Sent Events headers
   res.setHeader('Content-Type', 'text/event-stream');
@@ -346,7 +349,7 @@ exports.triggerBatchSend = async (req, res) => {
   res.flushHeaders(); // Establish the connection immediately
 
   // Start processing in the queue service, piping events directly to res
-  await queueService.processInitialBatch(count, res);
+  await queueService.processInitialBatch(count, res, ids);
   res.end(); // close SSE stream
 };
 
@@ -356,13 +359,15 @@ exports.triggerBatchSend = async (req, res) => {
  */
 exports.triggerFollowupBatch = async (req, res) => {
   const count = Number(req.body.count) || 10;
+  const ids = req.body.ids;
+  const stage = req.body.stage; // 1 for follow-up 1, 2 for follow-up 2
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
-  await queueService.processFollowUpBatch(count, res);
+  await queueService.processFollowUpBatch(count, res, ids, stage);
   res.end();
 };
 
@@ -588,5 +593,95 @@ exports.getDashboardStats = async (req, res) => {
   } catch (error) {
     logger.error(`Get dashboard stats error: ${error.message}`);
     return res.status(500).json({ success: false, message: 'Server error fetching statistics' });
+  }
+};
+
+/**
+ * GET /leads/eligible
+ * Get list of leads eligible for a batch campaign (initial or followup)
+ */
+exports.getEligibleLeads = async (req, res) => {
+  try {
+    const { type, limit = 10 } = req.query;
+    const limitNum = Number(limit);
+    let leads = [];
+
+    if (type === 'send') {
+      leads = await Lead.find({ status: 'FRESH' }).limit(limitNum);
+      if (leads.length < limitNum) {
+        const skippedLeads = await Lead.find({ status: 'SKIPPED' }).limit(limitNum - leads.length);
+        leads = [...leads, ...skippedLeads];
+      }
+      if (leads.length < limitNum) {
+        const failedAI = await Lead.find({ status: 'AI_FAILED' }).limit(limitNum - leads.length);
+        leads = [...leads, ...failedAI];
+      }
+      if (leads.length < limitNum) {
+        const failedEmail = await Lead.find({ status: 'EMAIL_FAILED' }).limit(limitNum - leads.length);
+        leads = [...leads, ...failedEmail];
+      }
+    } else if (type === 'followup') {
+      leads = await Lead.find({
+        status: { $in: ['EMAIL_SENT', 'FOLLOWUP_1_SENT'] },
+        replyReceived: false,
+        followupCount: { $lt: 2 }
+      }).limit(limitNum);
+    } else if (type === 'followup1') {
+      leads = await Lead.find({
+        status: 'EMAIL_SENT',
+        replyReceived: false,
+        followupCount: 0
+      }).limit(limitNum);
+    } else if (type === 'followup2') {
+      leads = await Lead.find({
+        status: 'FOLLOWUP_1_SENT',
+        replyReceived: false,
+        followupCount: 1
+      }).limit(limitNum);
+    } else {
+      return res.status(400).json({ success: false, message: 'Invalid type parameter. Use send, followup, followup1, or followup2.' });
+    }
+
+    return res.status(200).json({ success: true, leads });
+  } catch (error) {
+    logger.error(`Get eligible leads error: ${error.message}`);
+    return res.status(500).json({ success: false, message: 'Server error retrieving eligible leads' });
+  }
+};
+
+/**
+ * POST /leads/mark-inactive
+ * Manually trigger the transition to INACTIVE for leads who haven't replied 10 days post-Followup 2
+ */
+exports.markLeadsInactive = async (req, res) => {
+  try {
+    const tenDaysAgo = new Date();
+    tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+
+    const leadsToMarkInactive = await Lead.find({
+      status: 'FOLLOWUP_2_SENT',
+      replyReceived: false,
+      lastFollowupAt: { $lt: tenDaysAgo }
+    });
+
+    let count = 0;
+    if (leadsToMarkInactive.length > 0) {
+      for (const lead of leadsToMarkInactive) {
+        lead.status = 'INACTIVE';
+        lead.inactiveAt = new Date();
+        await lead.save();
+        logger.info(`Lead ${lead.email} manually marked as INACTIVE (no reply 10 days post-Followup 2)`);
+        count++;
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Inactive status check completed. ${count} leads marked as INACTIVE.`,
+      count
+    });
+  } catch (error) {
+    logger.error(`Manual inactive transition error: ${error.message}`);
+    return res.status(500).json({ success: false, message: 'Server error marking leads inactive' });
   }
 };

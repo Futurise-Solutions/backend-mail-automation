@@ -25,7 +25,7 @@ const sendSSE = (res, data) => {
 /**
  * Process a batch of initial emails.
  */
-exports.processInitialBatch = async (count, res) => {
+exports.processInitialBatch = async (count, res, ids) => {
   try {
     const settings = await Settings.getSettings();
     sendSSE(res, { type: 'info', message: 'Initializing batch campaign...' });
@@ -55,19 +55,24 @@ exports.processInitialBatch = async (count, res) => {
       });
     }
 
-    // 2. Select leads (Fresh first, then Skipped second, then AI_FAILED, then EMAIL_FAILED)
-    let leads = await Lead.find({ status: 'FRESH' }).limit(batchSize);
-    if (leads.length < batchSize) {
-      const skippedLeads = await Lead.find({ status: 'SKIPPED' }).limit(batchSize - leads.length);
-      leads = [...leads, ...skippedLeads];
-    }
-    if (leads.length < batchSize) {
-      const failedAILeads = await Lead.find({ status: 'AI_FAILED' }).limit(batchSize - leads.length);
-      leads = [...leads, ...failedAILeads];
-    }
-    if (leads.length < batchSize) {
-      const failedEmailLeads = await Lead.find({ status: 'EMAIL_FAILED' }).limit(batchSize - leads.length);
-      leads = [...leads, ...failedEmailLeads];
+    // 2. Select leads (either by specific IDs or auto-selected)
+    let leads = [];
+    if (ids && Array.isArray(ids) && ids.length > 0) {
+      leads = await Lead.find({ _id: { $in: ids } });
+    } else {
+      leads = await Lead.find({ status: 'FRESH' }).limit(batchSize);
+      if (leads.length < batchSize) {
+        const skippedLeads = await Lead.find({ status: 'SKIPPED' }).limit(batchSize - leads.length);
+        leads = [...leads, ...skippedLeads];
+      }
+      if (leads.length < batchSize) {
+        const failedAILeads = await Lead.find({ status: 'AI_FAILED' }).limit(batchSize - leads.length);
+        leads = [...leads, ...failedAILeads];
+      }
+      if (leads.length < batchSize) {
+        const failedEmailLeads = await Lead.find({ status: 'EMAIL_FAILED' }).limit(batchSize - leads.length);
+        leads = [...leads, ...failedEmailLeads];
+      }
     }
 
     if (leads.length === 0) {
@@ -295,19 +300,31 @@ exports.processInitialBatch = async (count, res) => {
 /**
  * Process follow-up batch campaign.
  */
-exports.processFollowUpBatch = async (count, res) => {
+exports.processFollowUpBatch = async (count, res, ids, stage) => {
   try {
     const settings = await Settings.getSettings();
     sendSSE(res, { type: 'info', message: 'Initializing follow-up campaign...' });
 
-    // 1. Select eligible leads: 
-    // Status is EMAIL_SENT (initial sent) OR FOLLOWUP_1_SENT
-    // replyReceived must be false, followupCount < 2
-    const leads = await Lead.find({
-      status: { $in: ['EMAIL_SENT', 'FOLLOWUP_1_SENT'] },
-      replyReceived: false,
-      followupCount: { $lt: 2 }
-    }).limit(count);
+    // 1. Select eligible leads (either by specific IDs or auto-selected)
+    let leads = [];
+    if (ids && Array.isArray(ids) && ids.length > 0) {
+      leads = await Lead.find({ _id: { $in: ids } });
+    } else {
+      const query = { replyReceived: false };
+      
+      if (stage === 1) {
+        query.status = 'EMAIL_SENT';
+        query.followupCount = 0;
+      } else if (stage === 2) {
+        query.status = 'FOLLOWUP_1_SENT';
+        query.followupCount = 1;
+      } else {
+        query.status = { $in: ['EMAIL_SENT', 'FOLLOWUP_1_SENT'] };
+        query.followupCount = { $lt: 2 };
+      }
+
+      leads = await Lead.find(query).limit(count);
+    }
 
     if (leads.length === 0) {
       sendSSE(res, { type: 'info', message: 'No eligible leads for follow-up found.' });

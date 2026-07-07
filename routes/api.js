@@ -20,6 +20,7 @@ router.get('/validate', protect, authController.validateToken);
 // ==========================================
 router.post('/leads/upload', protect, uploadCsv.single('file'), leadController.uploadLeads);
 router.get('/leads', protect, leadController.getLeads);
+router.get('/leads/eligible', protect, leadController.getEligibleLeads);
 router.get('/lead/:id', protect, leadController.getLeadById);
 router.put('/lead/:id', protect, leadController.updateLead);
 router.delete('/lead/:id', protect, leadController.deleteLead);
@@ -28,6 +29,7 @@ router.delete('/lead/:id', protect, leadController.deleteLead);
 router.post('/lead/send', protect, leadController.triggerBatchSend);
 router.post('/lead/send-single', protect, leadController.sendSingleEmail);
 router.post('/lead/followup', protect, leadController.triggerFollowupBatch);
+router.post('/leads/mark-inactive', protect, leadController.markLeadsInactive);
 
 // Reply Operations
 router.post('/lead/reply', protect, leadController.recordReply);
