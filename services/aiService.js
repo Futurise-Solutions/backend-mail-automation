@@ -4,6 +4,24 @@ const Settings = require('../models/Settings');
 const logger = require('../config/logger');
 
 /**
+ * Strip trailing <br> tags / empty <p></p> the AI sometimes leaves at the
+ * end of its generated body, so they don't stack with the hardcoded <br>
+ * before "Best Regards" and create an oversized gap.
+ */
+function cleanTrailingHtml(html) {
+  let cleaned = html.trim();
+  let prevLength;
+  do {
+    prevLength = cleaned.length;
+    cleaned = cleaned
+      .replace(/(<br\s*\/?>)+\s*$/gi, '')
+      .replace(/<p>\s*(&nbsp;|\s)*<\/p>\s*$/gi, '')
+      .trim();
+  } while (cleaned.length !== prevLength);
+  return cleaned;
+}
+
+/**
  * Generate initial cold email using Google Gemini or Fallback Groq.
  */
 exports.generateColdEmail = async (lead) => {
@@ -11,36 +29,38 @@ exports.generateColdEmail = async (lead) => {
   const logs = [];
 
   const prompt = `
-You are a sales representative for Futurise Solutions. 
-Your goal is to write a highly personalized, compelling, professional, and short cold email to a prospective lead.
+You are a senior sales representative for Futurise Solutions writing a cold outreach email to a prospective client.
+Your goal: write a highly personalized, concise, and conversion-focused cold email that gets a reply.
 
 Lead Information:
 - Name: ${lead.name}
-- Email: ${lead.email}
 - Company: ${lead.company}
 - Role: ${lead.role}
 - Industry: ${lead.industry || 'Not Specified'}
 - Website: ${lead.website || 'Not Specified'}
 - LinkedIn: ${lead.linkedin || 'Not Specified'}
 
-Our Company (Futurise Solutions) Details:
-- We specialize in high-end Web & Web App Development (React, Vite, Node.js), custom AI solutions, digital marketing, and automated workflows.
+About Futurise Solutions:
+- We build custom Web Apps (React, Node.js), AI-powered automation workflows, and digital growth solutions.
+- We help mid-to-large businesses eliminate manual bottlenecks, integrate systems, and scale operations efficiently.
 
-Writing Rules:
-1. Keep the email short (under 120-150 words).
-2. Establish relevance immediately in the opening line (reference their role/company).
-3. Do NOT use spammy words like "Guarantee", "Free", "Risk-free", "Act now", "Miracle".
-4. Sound natural, friendly, and human (no overly formal AI buzzwords like "delve", "testament", "revolutionary", "game-changer").
-5. The subject line should be catchy, professional, and relevant (no emojis, not clickbaity).
-6. Provide a clear and low-friction Call to Action (CTA).
-7. Do NOT include any sign-off (such as "Sincerely", "Regards", "Best regards") or company signature/contact information at the end. The email body must end immediately after your CTA.
-8. Format the output as a clean HTML email (use standard paragraph tags, bold text where appropriate, etc.) along with a plain-text backup.
+Writing Rules (follow strictly):
+1. Keep the TOTAL email body between 180-210 words.
+2. Open with ONE sentence that shows you understand their specific role/company/industry challenge — make them feel this email was written just for them.
+3. In 2-3 sentences, connect their specific pain point to what we solve — be concrete, not generic.
+4. Add ONE short paragraph (2-3 sentences) with a concrete example of the kind of result or capability we deliver (e.g. a specific workflow, integration, or efficiency gain relevant to their industry) — still no invented client names or fake stats.
+5. End with a single, low-pressure CTA that asks a specific question or proposes a short call ("Would a 15-minute call this week make sense?"). NEVER name a specific day of the week (no "Thursday", "Friday", etc.).
+6. Do NOT use spammy or AI-sounding words: "Guarantee", "Free", "Risk-free", "delve", "testament", "revolutionary", "game-changer", "streamline", "leverage", "unlock potential".
+7. Subject line: Professional, specific to their role/industry, under 10 words, no emojis.
+8. Sound like a real person — conversational, direct, confident but not pushy.
+9. Do NOT include any sign-off, "Best Regards", or signature — the body ends immediately after the CTA.
+10. Format the body as clean HTML (use <p> tags, <strong> for emphasis). Include a plain-text version.
 
-You MUST respond strictly in the following JSON format:
+Respond ONLY in this JSON format:
 {
-  "subject": "Email Subject Line Here",
-  "html": "<p>HTML-formatted email body ending right after CTA. Add line breaks using tags. Do not include signature.</p>",
-  "text": "Plain-text version of the email body ending right after CTA."
+  "subject": "Subject line here",
+  "html": "<p>HTML email body ending after CTA. No sign-off or signature.</p>",
+  "text": "Plain-text email body ending after CTA. No sign-off or signature."
 }
 `;
 
@@ -69,8 +89,8 @@ You MUST respond strictly in the following JSON format:
 
       return {
         subject: emailContent.subject,
-        html: `${emailContent.html.trim()}<br><br>${settings.companySignature}`,
-        text: `${emailContent.text.trim()}\n\n${plaintextSignature}`,
+        html: `${cleanTrailingHtml(emailContent.html)}<p style="margin:4px 0 4px 0;">Best Regards,</p>${settings.companySignature}`,
+        text: `${emailContent.text.trim()}\n\nBest Regards,\n${plaintextSignature}`,
         provider: 'gemini'
       };
     } catch (err) {
@@ -110,8 +130,8 @@ You MUST respond strictly in the following JSON format:
 
       return {
         subject: emailContent.subject,
-        html: `${emailContent.html.trim()}<br><br>${settings.companySignature}`,
-        text: `${emailContent.text.trim()}\n\n${plaintextSignature}`,
+        html: `${cleanTrailingHtml(emailContent.html)}<p style="margin:4px 0 4px 0;">Best Regards,</p>${settings.companySignature}`,
+        text: `${emailContent.text.trim()}\n\nBest Regards,\n${plaintextSignature}`,
         provider: 'groq',
         warnings: logs
       };
@@ -149,29 +169,31 @@ exports.generateFollowUpEmail = async (lead, previousEmailContent, followupNumbe
   const logs = [];
 
   const prompt = `
-You are a sales representative for Futurise Solutions. 
-You are writing Follow-Up Email #${followupNumber} to ${lead.name} (${lead.role} at ${lead.company}).
+You are a senior sales representative for Futurise Solutions writing Follow-Up Email #${followupNumber} to ${lead.name} (${lead.role} at ${lead.company}).
 
-Here is the context of the previous email sent to them:
+Previous email context:
 ---
 Subject: ${previousEmailContent.subject}
-Body: 
+Body:
 ${previousEmailContent.text}
 ---
 
-Writing Rules:
-1. Reference our previous message briefly and politely, without sounding pushy or passive-aggressive.
-2. Keep it extremely short (under 80-100 words).
-3. Offer a fresh value proposition or ask a simple question.
-4. ${followupNumber === 1 ? 'Mention that you have attached the Futurise Solutions Catalogue PDF for their convenience.' : 'Do NOT mention any attachments.'}
-5. Do NOT use spammy words.
-6. Do NOT include any sign-off (such as "Sincerely", "Regards", "Best regards") or company signature/contact information at the end. The email body must end immediately after your CTA or value proposition.
-7. Must respond in standard JSON format:
+Writing Rules (follow strictly):
+1. Keep it ${followupNumber === 1 ? 'short — under 80 words total' : 'between 120-150 words total'}.
+2. Open with a brief, natural reference to the previous email (1 sentence max) — do NOT sound pushy or passive-aggressive.
+3. ${followupNumber === 1
+  ? 'Mention you\'ve attached the Futurise Solutions Catalogue and ask one specific, easy-to-answer question about their current challenges.'
+  : 'Offer one concrete, fresh angle (a specific result we\'ve helped similar companies achieve) with 1-2 sentences of supporting detail, then ask for a quick 10-minute call at their convenience.'}
+4. CTA must be specific and low-friction — avoid vague asks like "let me know if you're interested". NEVER name a specific day of the week (no "Thursday", "Friday", etc.) — say "this week" or "at your convenience" instead.
+5. Do NOT use: "I hope this finds you well", "Just checking in", "circle back", "touch base", "synergy", "leverage", "streamline".
+6. Sound like a real person — conversational and direct.
+7. Do NOT include any sign-off, "Best Regards", or signature. Body ends immediately after CTA.
+8. Respond ONLY in this JSON format:
 
 {
   "subject": "Re: ${previousEmailContent.subject.replace(/^Re:\s*/i, '')}",
-  "html": "<p>HTML-formatted email follow-up body. Do not include signature.</p>",
-  "text": "Plain-text version of the follow-up body."
+  "html": "<p>HTML follow-up body. No sign-off or signature.</p>",
+  "text": "Plain-text follow-up body. No sign-off or signature."
 }
 `;
 
@@ -200,8 +222,8 @@ Writing Rules:
 
       return {
         subject: emailContent.subject,
-        html: `${emailContent.html.trim()}<br><br>${settings.companySignature}`,
-        text: `${emailContent.text.trim()}\n\n${plaintextSignature}`,
+        html: `${cleanTrailingHtml(emailContent.html)}<p style="margin:4px 0 4px 0;">Best Regards,</p>${settings.companySignature}`,
+        text: `${emailContent.text.trim()}\n\nBest Regards,\n${plaintextSignature}`,
         provider: 'gemini'
       };
     } catch (err) {
@@ -232,8 +254,8 @@ Writing Rules:
 
       return {
         subject: emailContent.subject,
-        html: `${emailContent.html.trim()}<br><br>${settings.companySignature}`,
-        text: `${emailContent.text.trim()}\n\n${plaintextSignature}`,
+        html: `${cleanTrailingHtml(emailContent.html)}<p style="margin:4px 0 4px 0;">Best Regards,</p>${settings.companySignature}`,
+        text: `${emailContent.text.trim()}\n\nBest Regards,\n${plaintextSignature}`,
         provider: 'groq',
         warnings: logs
       };
@@ -284,7 +306,8 @@ Writing Rules:
 1. Address the lead's concerns or questions directly, showing empathy and professionalism.
 2. Keep it clear, concise, and focused on securing a meeting or answering their query.
 3. Do NOT include any sign-off or company signature at the end. The suggestion body must end immediately after your closing thoughts or meeting request.
-4. Output the response in standard JSON format:
+4. NEVER name a specific day of the week (no "Thursday", "Friday", etc.) when proposing a meeting — say "this week" or "at your convenience" instead.
+5. Output the response in standard JSON format:
 
 {
   "subject": "Re: ${emailHistoryList[0] ? emailHistoryList[0].subject.replace(/^Re:\s*/i, '') : 'Our conversation'}",
@@ -317,8 +340,8 @@ Writing Rules:
     const parsed = JSON.parse(response.text.trim());
     return {
       subject: parsed.subject,
-      html: `${parsed.html.trim()}<br><br>${settings.companySignature}`,
-      text: `${parsed.text.trim()}\n\n${plaintextSignature}`
+      html: `${cleanTrailingHtml(parsed.html)}<p style="margin:4px 0 4px 0;">Best Regards,</p>${settings.companySignature}`,
+      text: `${parsed.text.trim()}\n\nBest Regards,\n${plaintextSignature}`
     };
   } else {
     const groq = new Groq({ apiKey });
@@ -330,8 +353,8 @@ Writing Rules:
     const parsed = JSON.parse(chatCompletion.choices[0].message.content.trim());
     return {
       subject: parsed.subject,
-      html: `${parsed.html.trim()}<br><br>${settings.companySignature}`,
-      text: `${parsed.text.trim()}\n\n${plaintextSignature}`
+      html: `${cleanTrailingHtml(parsed.html)}<p style="margin:4px 0 4px 0;">Best Regards,</p>${settings.companySignature}`,
+      text: `${parsed.text.trim()}\n\nBest Regards,\n${plaintextSignature}`
     };
   }
 };

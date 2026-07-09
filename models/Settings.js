@@ -37,6 +37,26 @@ const settingsSchema = new mongoose.Schema({
   resendConfig: {
     apiKey: { type: String, default: '' },
     fromEmail: { type: String, default: '' }
+  },
+  schedules: {
+    initial: {
+      enabled: { type: Boolean, default: false },
+      hour: { type: Number, default: 3, min: 0, max: 23 },
+      minute: { type: Number, default: 0, min: 0, max: 59 },
+      batchSize: { type: Number, default: 20, min: 1 }
+    },
+    followup1: {
+      enabled: { type: Boolean, default: false },
+      hour: { type: Number, default: 3, min: 0, max: 23 },
+      minute: { type: Number, default: 0, min: 0, max: 59 },
+      batchSize: { type: Number, default: 20, min: 1 }
+    },
+    followup2: {
+      enabled: { type: Boolean, default: false },
+      hour: { type: Number, default: 3, min: 0, max: 23 },
+      minute: { type: Number, default: 0, min: 0, max: 59 },
+      batchSize: { type: Number, default: 20, min: 1 }
+    }
   }
 }, {
   timestamps: true

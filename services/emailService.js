@@ -51,7 +51,7 @@ exports.sendEmail = async ({ to, subject, html, text, attachCatalogue = false })
     });
 
     const mailOptions = {
-      from: fromEmail,
+      from: `"Futurise Solutions" <${fromEmail}>`,
       to,
       subject,
       html,
@@ -92,7 +92,7 @@ exports.sendEmail = async ({ to, subject, html, text, attachCatalogue = false })
     }
 
     const payload = {
-      from: fromEmail,
+      from: `"Futurise Solutions" <${fromEmail}>`,
       to,
       subject,
       html,

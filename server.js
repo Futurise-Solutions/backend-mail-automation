@@ -7,6 +7,7 @@ const logger = require('./config/logger');
 const apiRoutes = require('./routes/api');
 const { seedAdminUser } = require('./controllers/authController');
 const initCronJobs = require('./jobs/cronJobs');
+const initScheduledSendJobs = require('./jobs/scheduledSendJobs');
 
 const app = express();
 
@@ -47,6 +48,7 @@ app.use((err, req, res, next) => {
 
 // Initialize Cron Jobs
 initCronJobs();
+initScheduledSendJobs();
 
 // Start Server
 const PORT = process.env.PORT || 5000;

@@ -72,6 +72,14 @@ exports.updateSettings = async (req, res) => {
         logger.error(`Failed to parse resendConfig string: ${err.message}`);
       }
     }
+    let schedules = updates.schedules;
+    if (typeof schedules === 'string') {
+      try {
+        schedules = JSON.parse(schedules);
+      } catch (err) {
+        logger.error(`Failed to parse schedules string: ${err.message}`);
+      }
+    }
 
     // 1. General Configs
     if (updates.dailyLimit !== undefined) {
@@ -116,7 +124,27 @@ exports.updateSettings = async (req, res) => {
       }
     }
 
-    // 5. File upload for PDF Catalogue
+    // 5. Scheduled Send Config Update (per-level enable + time-of-day)
+    if (schedules) {
+      ['initial', 'followup1', 'followup2'].forEach((level) => {
+        const incoming = schedules[level];
+        if (!incoming) return;
+        if (incoming.enabled !== undefined) {
+          settings.schedules[level].enabled = incoming.enabled === true || incoming.enabled === 'true';
+        }
+        if (incoming.hour !== undefined) {
+          settings.schedules[level].hour = Math.min(23, Math.max(0, Number(incoming.hour)));
+        }
+        if (incoming.minute !== undefined) {
+          settings.schedules[level].minute = Math.min(59, Math.max(0, Number(incoming.minute)));
+        }
+        if (incoming.batchSize !== undefined) {
+          settings.schedules[level].batchSize = Math.max(1, Number(incoming.batchSize));
+        }
+      });
+    }
+
+    // 6. File upload for PDF Catalogue
     if (req.file) {
       // Delete old catalogue if exists
       if (settings.cataloguePdfPath) {
