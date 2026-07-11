@@ -1,0 +1,104 @@
+name: Scheduled Email Sends
+
+# ---------------------------------------------------------------------------
+# IMPORTANT: GitHub Actions cron is ALWAYS in UTC. Convert from your local time.
+#   IST (UTC+5:30):  03:00 IST  ==  21:30 UTC (the PREVIOUS day)
+#                    00:30 IST  ==  19:00 UTC (the previous day)
+# Scheduled runs can be delayed 5-15 min under load (GitHub caveat) — fine for
+# cold email, but do not rely on second-accurate timing.
+# GitHub also DISABLES scheduled workflows after 60 days with no repo commits.
+# ---------------------------------------------------------------------------
+
+on:
+  workflow_dispatch:
+    inputs:
+      level:
+        description: Which job to run
+        type: choice
+        required: true
+        default: initial
+        options:
+          - initial
+          - followup1
+          - followup2
+          - inactive
+      dry_run:
+        description: Dry run (count eligible leads only, send nothing)
+        type: boolean
+        default: false
+
+  schedule:
+    # 03:00 IST daily  ->  initial cold-email batch  (your main ask)
+    - cron: '30 21 * * *'
+    # 00:30 IST daily  ->  mark stale leads INACTIVE (replaces in-process midnight cron)
+    - cron: '0 19 * * *'
+    # --- Optional follow-ups: uncomment + adjust times to auto-send. ---
+    # NOTE: follow-up 1's catalogue PDF will NOT attach in CI (uploads/ is gitignored).
+    #       See DEPLOYMENT.md ("Catalogue PDF") before enabling.
+    # 11:00 IST -> follow-up 1
+    # - cron: '30 5 * * *'
+    # 15:00 IST -> follow-up 2
+    # - cron: '30 9 * * *'
+
+# Never let two send runs overlap (e.g. a long batch still running when the next fires).
+concurrency:
+  group: scheduled-email-sends
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120   # a batch is batchSize x (30-90s) — give it plenty of headroom
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Resolve which job to run
+        id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            LEVEL="${{ github.event.inputs.level }}"
+            DRY="${{ github.event.inputs.dry_run }}"
+          else
+            case "${{ github.event.schedule }}" in
+              "30 21 * * *") LEVEL="initial" ;;
+              "0 19 * * *")  LEVEL="inactive" ;;
+              "30 5 * * *")  LEVEL="followup1" ;;
+              "30 9 * * *")  LEVEL="followup2" ;;
+              *)             LEVEL="initial" ;;
+            esac
+            DRY="false"
+          fi
+          ARGS="$LEVEL"
+          if [ "$DRY" = "true" ]; then ARGS="$LEVEL --dry-run"; fi
+          echo "args=$ARGS" >> "$GITHUB_OUTPUT"
+          echo "Resolved job -> $ARGS"
+
+      - name: Run scheduled send
+        run: node scripts/runScheduledSend.js ${{ steps.resolve.outputs.args }}
+        env:
+          # Required
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          # AI + email creds: only needed if they are NOT already saved in the
+          # Settings document (via the dashboard). They fall back from env when blank.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_SECURE: ${{ secrets.SMTP_SECURE }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM: ${{ secrets.RESEND_FROM }}
+          # Keep console logs visible in the Actions run (logger hides them when production)
+          NODE_ENV: development

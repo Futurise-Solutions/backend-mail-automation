@@ -46,9 +46,17 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Initialize Cron Jobs
-initCronJobs();
-initScheduledSendJobs();
+// Initialize in-process schedulers ONLY when explicitly enabled.
+// When deployed to a free/sleeping host, an external scheduler (GitHub Actions ->
+// scripts/runScheduledSend.js) runs these instead, so keep this OFF to avoid
+// double-sending. Set ENABLE_INPROCESS_CRON=true when hosting on an always-on server.
+if (process.env.ENABLE_INPROCESS_CRON === 'true') {
+  initCronJobs();
+  initScheduledSendJobs();
+  logger.info('In-process schedulers ENABLED (ENABLE_INPROCESS_CRON=true).');
+} else {
+  logger.info('In-process schedulers DISABLED. Use an external scheduler (e.g. GitHub Actions) or set ENABLE_INPROCESS_CRON=true.');
+}
 
 // Start Server
 const PORT = process.env.PORT || 5000;
