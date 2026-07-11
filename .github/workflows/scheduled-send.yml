@@ -28,16 +28,18 @@ on:
         default: false
 
   schedule:
-    # 03:00 IST daily  ->  initial cold-email batch  (your main ask)
-    - cron: '30 21 * * *'
-    # 00:30 IST daily  ->  mark stale leads INACTIVE (replaces in-process midnight cron)
-    - cron: '0 19 * * *'
-    # --- Optional follow-ups: uncomment + adjust times to auto-send. ---
-    # NOTE: follow-up 1's catalogue PDF will NOT attach in CI (uploads/ is gitignored).
-    #       See DEPLOYMENT.md ("Catalogue PDF") before enabling.
-    # 11:00 IST -> follow-up 1
+    # ONE-TIME initial send: 21:30 UTC on 12 Jul  ==  03:00 AM IST on 13 Jul 2026.
+    # (Cron has no year field, so it technically repeats every year on Jul 12 UTC —
+    #  effectively one-time for this campaign. Delete/replace it after 13 Jul if desired.)
+    - cron: '30 21 12 7 *'
+    # --- DISABLED for now. Uncomment when you want to enable more. ---
+    # Daily 03:00 IST initial batch:
+    # - cron: '30 21 * * *'
+    # 00:30 IST inactive sweep:
+    # - cron: '0 19 * * *'
+    # 11:00 IST follow-up 1 (NOTE: catalogue PDF won't attach in CI — see DEPLOYMENT.md):
     # - cron: '30 5 * * *'
-    # 15:00 IST -> follow-up 2
+    # 15:00 IST follow-up 2:
     # - cron: '30 9 * * *'
 
 # Never let two send runs overlap (e.g. a long batch still running when the next fires).
@@ -70,11 +72,12 @@ jobs:
             DRY="${{ github.event.inputs.dry_run }}"
           else
             case "${{ github.event.schedule }}" in
-              "30 21 * * *") LEVEL="initial" ;;
-              "0 19 * * *")  LEVEL="inactive" ;;
-              "30 5 * * *")  LEVEL="followup1" ;;
-              "30 9 * * *")  LEVEL="followup2" ;;
-              *)             LEVEL="initial" ;;
+              "30 21 12 7 *") LEVEL="initial" ;;
+              "30 21 * * *")  LEVEL="initial" ;;
+              "0 19 * * *")   LEVEL="inactive" ;;
+              "30 5 * * *")   LEVEL="followup1" ;;
+              "30 9 * * *")   LEVEL="followup2" ;;
+              *)              LEVEL="initial" ;;
             esac
             DRY="false"
           fi
