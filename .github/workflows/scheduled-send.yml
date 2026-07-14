@@ -29,9 +29,9 @@ on:
 
   schedule:
     # ONE-TIME initial send: 21:30 UTC on 12 Jul  ==  03:00 AM IST on 13 Jul 2026.
-    # (Cron has no year field, so it technically repeats every year on Jul 12 UTC —
-    #  effectively one-time for this campaign. Delete/replace it after 13 Jul if desired.)
     - cron: '30 21 12 7 *'
+    # ONE-TIME followup1 send: 21:30 UTC on 14 Jul  ==  03:00 AM IST on 15 Jul 2026.
+    - cron: '30 21 14 7 *'
     # --- DISABLED for now. Uncomment when you want to enable more. ---
     # Daily 03:00 IST initial batch:
     # - cron: '30 21 * * *'
@@ -73,6 +73,7 @@ jobs:
           else
             case "${{ github.event.schedule }}" in
               "30 21 12 7 *") LEVEL="initial" ;;
+              "30 21 14 7 *") LEVEL="followup1" ;;
               "30 21 * * *")  LEVEL="initial" ;;
               "0 19 * * *")   LEVEL="inactive" ;;
               "30 5 * * *")   LEVEL="followup1" ;;
