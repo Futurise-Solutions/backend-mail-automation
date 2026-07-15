@@ -18,16 +18,21 @@ exports.sendEmail = async ({ to, subject, html, text, attachCatalogue = false })
   const settings = await Settings.getSettings();
   const attachments = [];
 
-  // If catalogue attachment is requested, verify if it exists and attach it
-  if (attachCatalogue && settings.cataloguePdfPath) {
-    const fullPath = path.resolve(settings.cataloguePdfPath);
-    if (fs.existsSync(fullPath)) {
-      attachments.push({
-        filename: 'Futurise_Solutions_Catalogue.pdf',
-        path: fullPath
-      });
-    } else {
-      logger.warn(`Catalogue PDF requested but file not found at: ${fullPath}`);
+  // If catalogue attachment is requested, verify if it exists and attach it.
+  // CATALOGUE_PDF_PATH env var overrides MongoDB path — used in CI/GitHub Actions
+  // where uploads/ is gitignored and the PDF lives in assets/ instead.
+  if (attachCatalogue) {
+    const pdfPath = process.env.CATALOGUE_PDF_PATH || settings.cataloguePdfPath;
+    if (pdfPath) {
+      const fullPath = path.resolve(pdfPath);
+      if (fs.existsSync(fullPath)) {
+        attachments.push({
+          filename: 'Futurise_Solutions_Catalogue.pdf',
+          path: fullPath
+        });
+      } else {
+        logger.warn(`Catalogue PDF requested but file not found at: ${fullPath}`);
+      }
     }
   }
 

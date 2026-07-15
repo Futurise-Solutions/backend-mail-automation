@@ -104,5 +104,7 @@ jobs:
           SMTP_FROM: ${{ secrets.SMTP_FROM }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           RESEND_FROM: ${{ secrets.RESEND_FROM }}
+          # Catalogue PDF lives in assets/ (committed to repo) — overrides MongoDB uploads/ path in CI
+          CATALOGUE_PDF_PATH: assets/catalogue.pdf
           # Keep console logs visible in the Actions run (logger hides them when production)
           NODE_ENV: development
