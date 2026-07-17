@@ -32,6 +32,8 @@ on:
     - cron: '0 6 16 7 *'
     # ONE-TIME followup1 send: 21:30 UTC on 14 Jul  ==  03:00 AM IST on 15 Jul 2026.
     - cron: '30 21 14 7 *'
+    # ONE-TIME followup2 send: 21:30 UTC on 17 Jul  ==  03:00 AM IST on 18 Jul 2026.
+    - cron: '30 21 17 7 *'
     # --- DISABLED for now. Uncomment when you want to enable more. ---
     # Daily 03:00 IST initial batch:
     # - cron: '30 21 * * *'
@@ -74,6 +76,7 @@ jobs:
             case "${{ github.event.schedule }}" in
               "0 6 16 7 *")   LEVEL="initial" ;;
               "30 21 14 7 *") LEVEL="followup1" ;;
+              "30 21 17 7 *") LEVEL="followup2" ;;
               "30 21 * * *")  LEVEL="initial" ;;
               "0 19 * * *")   LEVEL="inactive" ;;
               "30 5 * * *")   LEVEL="followup1" ;;
